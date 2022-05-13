@@ -108,6 +108,11 @@ public:
         return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; });
     } 
 
+    vector<Document> FindTopDocuments(const string& raw_query, DocumentStatus status) const 
+    {
+        return FindTopDocuments(raw_query, [status](int document_id, DocumentStatus s, int rating) { return status == s; });
+    }
+
     int GetDocumentCount() const {
         return documents_.size();
     }
@@ -280,19 +285,19 @@ int main() {
     cout << "ACTUAL by default:"s << endl;
     for (const Document& document : search_server.FindTopDocuments("пушистый ухоженный кот"s)) {
         PrintDocument(document);
-    } 
+    }
 
-    cout << "ACTUAL:"s << endl;
-    for (const Document& document : search_server.FindTopDocuments("пушистый ухоженный кот"s, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; })) {
+    cout << "BANNED:"s << endl;
+    for (const Document& document : search_server.FindTopDocuments("пушистый ухоженный кот"s, DocumentStatus::BANNED)) {
         PrintDocument(document);
     }
-   
+
     cout << "Even ids:"s << endl;
     for (const Document& document : search_server.FindTopDocuments("пушистый ухоженный кот"s, [](int document_id, DocumentStatus status, int rating) { return document_id % 2 == 0; })) {
         PrintDocument(document);
     }
 
-    return 0; 
+    return 0;
 }
 /*
 int main() {
