@@ -9,10 +9,12 @@
 #include <utility>
 #include <vector>
 #include <functional>
+#include <numeric>
 
 using namespace std;
 
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
+const double DELTA = 1e-6;
 
 string ReadLine() {
     string s;
@@ -71,6 +73,8 @@ public:
 
     void AddDocument(int document_id, const string& document, DocumentStatus status, const vector<int>& ratings) {
         const vector<string> words = SplitIntoWordsNoStop(document);
+        if (words.empty())
+            return;
         const double inv_word_count = 1.0 / words.size();
         for (const string& word : words) {
             word_to_document_freqs_[word][document_id] += inv_word_count;
@@ -85,12 +89,12 @@ public:
     template <typename Document_predicate>
     vector<Document> FindTopDocuments(const string& raw_query, const Document_predicate& document_predicate) const {
         const Query query = ParseQuery(raw_query);
-        
+
         auto matched_documents = FindAllDocuments(query, document_predicate);
 
         sort(matched_documents.begin(), matched_documents.end(),
             [](const Document& lhs, const Document& rhs) {
-                if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+                if (abs(lhs.relevance - rhs.relevance) < DELTA) {
                     return lhs.rating > rhs.rating;
                 }
                 else {
@@ -103,12 +107,12 @@ public:
         }
         return matched_documents;
     }
-    
+
     vector<Document> FindTopDocuments(const string& raw_query) const {
         return FindTopDocuments(raw_query, [](int document_id, DocumentStatus status, int rating) { return status == DocumentStatus::ACTUAL; });
-    } 
+    }
 
-    vector<Document> FindTopDocuments(const string& raw_query, DocumentStatus status) const 
+    vector<Document> FindTopDocuments(const string& raw_query, DocumentStatus status) const
     {
         return FindTopDocuments(raw_query, [status](int document_id, DocumentStatus s, int rating) { return status == s; });
     }
@@ -151,7 +155,7 @@ private:
     map<int, DocumentData> documents_;
 
     bool IsStopWord(const string& word) const {
-        return stop_words_.count(word) > 0;
+        return stop_words_.count(word) > 0u;
     }
 
     vector<string> SplitIntoWordsNoStop(const string& text) const {
@@ -168,11 +172,7 @@ private:
         if (ratings.empty()) {
             return 0;
         }
-        int rating_sum = 0;
-        for (const int rating : ratings) {
-            rating_sum += rating;
-        }
-        return rating_sum / static_cast<int>(ratings.size());
+        return accumulate(ratings.begin(), ratings.end(), 0) / static_cast<int>(ratings.size());
     }
 
     struct QueryWord {
@@ -218,22 +218,27 @@ private:
 
     // Existence required
     double ComputeWordInverseDocumentFreq(const string& word) const {
-        return log(GetDocumentCount() * 1.0 / word_to_document_freqs_.at(word).size());
+        if (word_to_document_freqs_.count(word) < 1u)
+            return 0.0;
+        int a = word_to_document_freqs_.at(word).size();
+        if (a == 0)
+            return 0.0;
+        return log(GetDocumentCount() * 1.0 / ((double)a));
     }
     ///////////////////////////////////////////////////////////////
     template <typename Document_predicate>
     vector<Document> FindAllDocuments(const Query& query, const Document_predicate& document_predicate) const {
         map<int, double> document_to_relevance;
-        
+
         for (const string& word : query.plus_words) {
             if (word_to_document_freqs_.count(word) == 0) {
                 continue;
             }
             const double inverse_document_freq = ComputeWordInverseDocumentFreq(word);
-            for (const auto [document_id, term_freq] : word_to_document_freqs_.at(word)) 
+            for (const auto [document_id, term_freq] : word_to_document_freqs_.at(word))
             {
-                
-                if (document_predicate(document_id, documents_.at(document_id).status, documents_.at(document_id).rating))
+                const auto& at_id = documents_.at(document_id);
+                if (document_predicate(document_id, at_id.status, at_id.rating))
                 {
                     document_to_relevance[document_id] += term_freq * inverse_document_freq;
                 }
@@ -261,10 +266,7 @@ private:
     }
 };
 
-
 // ==================== для примера =========================
-
-
 void PrintDocument(const Document& document) {
     cout << "{ "s
         << "document_id = "s << document.id << ", "s
@@ -299,18 +301,3 @@ int main() {
 
     return 0;
 }
-/*
-int main() {
-    SearchServer search_server;
-    search_server.SetStopWords("и в на"s);
-
-    search_server.AddDocument(0, "белый кот и модный ошейник"s, DocumentStatus::ACTUAL, { 8, -3 });
-    search_server.AddDocument(1, "пушистый кот пушистый хвост"s, DocumentStatus::ACTUAL, { 7, 2, 7 });
-    search_server.AddDocument(2, "ухоженный пёс выразительные глаза"s, DocumentStatus::ACTUAL, { 5, -12, 2, 1 });
-
-    for (const Document& document : search_server.FindTopDocuments("ухоженный кот"s)) {
-        PrintDocument(document);
-    }
-
-    return 0;;
-}*/
