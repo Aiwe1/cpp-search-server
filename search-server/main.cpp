@@ -1,5 +1,3 @@
-// search_server_s1_t2_v2.cpp
-
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -85,7 +83,7 @@ public:
                 status
             });
     }
-    ////////////////////////////////////////////////
+
     template <typename Document_predicate>
     vector<Document> FindTopDocuments(const string& raw_query, const Document_predicate& document_predicate) const {
         const Query query = ParseQuery(raw_query);
@@ -183,7 +181,6 @@ private:
 
     QueryWord ParseQueryWord(string text) const {
         bool is_minus = false;
-        // Word shouldn't be empty
         if (text[0] == '-') {
             is_minus = true;
             text = text.substr(1);
@@ -216,9 +213,8 @@ private:
         return query;
     }
 
-    // Existence required
     double ComputeWordInverseDocumentFreq(const string& word) const {
-        if (word_to_document_freqs_.count(word) < 1u)
+        if (word_to_document_freqs_.count(word) == 0)
             return 0.0;
         int a = word_to_document_freqs_.at(word).size();
         if (a == 0)
@@ -266,7 +262,6 @@ private:
     }
 };
 
-// ==================== для примера =========================
 void PrintDocument(const Document& document) {
     cout << "{ "s
         << "document_id = "s << document.id << ", "s
@@ -274,6 +269,218 @@ void PrintDocument(const Document& document) {
         << "rating = "s << document.rating
         << " }"s << endl;
 }
+// ------- МАКРОСЫ ДЛЯ ТЕСТА ----------
+
+template <typename T>
+void RunTestImpl(T t, const string& s) {
+    t();
+    cerr << s << " OK"s << endl;
+}
+
+#define RUN_TEST(func) RunTestImpl((func), #func)
+
+template <typename T, typename U>
+void AssertEqualImpl(const T& t, const U& u, const string& t_str, const string& u_str, const string& file,
+    const string& func, unsigned line, const string& hint) {
+    if (t != u) {
+        cout << boolalpha;
+        cout << file << "("s << line << "): "s << func << ": "s;
+        cout << "ASSERT_EQUAL("s << t_str << ", "s << u_str << ") failed: "s;
+        cout << t << " != "s << u << "."s;
+        if (!hint.empty()) {
+            cout << " Hint: "s << hint;
+        }
+        cout << endl;
+        abort();
+    }
+}
+
+#define ASSERT_EQUAL(a, b) AssertEqualImpl((a), (b), #a, #b, __FILE__, __FUNCTION__, __LINE__, ""s)
+
+#define ASSERT_EQUAL_HINT(a, b, hint) AssertEqualImpl((a), (b), #a, #b, __FILE__, __FUNCTION__, __LINE__, (hint))
+
+void AssertImpl(bool value, const string& expr_str, const string& file, const string& func, unsigned line,
+    const string& hint) {
+    if (!value) {
+        cout << file << "("s << line << "): "s << func << ": "s;
+        cout << "ASSERT("s << expr_str << ") failed."s;
+        if (!hint.empty()) {
+            cout << " Hint: "s << hint;
+        }
+        cout << endl;
+        abort();
+    }
+}
+
+#define ASSERT(expr) AssertImpl(!!(expr), #expr, __FILE__, __FUNCTION__, __LINE__, ""s)
+
+#define ASSERT_HINT(expr, hint) AssertImpl(!!(expr), #expr, __FILE__, __FUNCTION__, __LINE__, (hint))
+
+// -------- Начало модульных тестов поисковой системы ----------
+
+// Тест проверяет, что поисковая система исключает стоп-слова при добавлении документов
+void TestExcludeStopWordsFromAddedDocumentContent() {
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = { 1, 2, 3 };
+
+    SearchServer server1;
+    server1.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+    const auto found_docs = server1.FindTopDocuments("in"s);
+    ASSERT(found_docs.size() == 1);
+    const Document& doc0 = found_docs[0];
+    ASSERT(doc0.id == doc_id);
+    
+    SearchServer server2;
+    server2.SetStopWords("in the"s);
+    server2.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+    ASSERT(server2.FindTopDocuments("in"s).empty());
+    
+}
+void TestExcludeMinusWordsFromAddedDocumentContent() {
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = { 1, 2, 3 };
+
+    const int doc_id2 = 43;
+    const string content2 = "cat and dog in the home"s;
+
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings);
+        const auto found_docs = server.FindTopDocuments("cat -city"s);
+        ASSERT(found_docs.size() == 1);
+        const Document& doc0 = found_docs[0];
+        ASSERT(doc0.id == doc_id2);
+    }
+
+}
+
+//При матчинге документа по поисковому запросу должны быть возвращены все слова из поискового запроса, присутствующие в документе. Если есть соответствие хотя бы по одному минус-слову, должен возвращаться пустой список слов.
+void TestFindDocumentWithSearchWords() {
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = { 1, 2, 3 };
+
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        const auto found_docs = server.MatchDocument("cat -city"s, doc_id);
+        ASSERT(get<0>(found_docs).size() != 1);
+
+        const auto found_docs2 = server.MatchDocument("cat -dog"s, doc_id);
+        ASSERT(get<0>(found_docs).size() == 1);
+    }
+
+}
+
+//  Возвращаемые при поиске документов результаты должны быть отсортированы в порядке убывания релевантности.
+void TestSortRating() {
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = { 1, 2, 3 };
+
+    const int doc_id2 = 43;
+    const string content2 = "cat and dog in the home"s;
+
+    const int doc_id3 = 44;
+    const string content3 = "in the box"s;
+
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings);
+        server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings);
+        const auto found_docs = server.FindTopDocuments("cat dog"s);
+        ASSERT(found_docs.size() == 2);
+        const Document& doc0 = found_docs[0];
+        ASSERT(doc0.id == doc_id2);
+        const Document& doc1 = found_docs[1];
+        ASSERT(doc1.id == doc_id);
+    }
+}
+
+//  Рейтинг добавленного документа равен среднему арифметическому оценок документа.
+void TestComputeAverageRating() {
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = { 1, 2, 3 };
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+
+        const auto found_docs = server.FindTopDocuments("cat dog"s);
+        ASSERT(found_docs[0].rating == 2);
+    }
+}
+// Поиск документов, имеющих заданный статус.
+
+void TestStatus() {
+
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = { 1, 2, 3 };
+
+    const int doc_id2 = 43;
+    const string content2 = "cat and dog in the home"s;
+    const vector<int> ratings2 = { 3, 3, 3 };
+
+    const int doc_id3 = 44;
+    const string content3 = "cat and dog in the black box"s;
+    const vector<int> ratings3 = { 4, 4, 4 };
+
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        server.AddDocument(doc_id2, content2, DocumentStatus::IRRELEVANT, ratings);
+        server.AddDocument(doc_id3, content3, DocumentStatus::REMOVED, ratings);
+        const auto found_docs = server.FindTopDocuments("cat"s, DocumentStatus::IRRELEVANT);
+        ASSERT(found_docs.size() == 1);
+        ASSERT(found_docs[0].id == 43);
+        const auto found_docs2 = server.FindTopDocuments("cat"s, DocumentStatus::REMOVED);
+        ASSERT(found_docs.size() == 1);
+
+    }
+}
+// Корректное вычисление релевантности найденных документов
+
+void TestCountingRelevansIsCorrect() {
+
+    const int doc_id = 42;
+    const string content = "cat in the city"s;
+    const vector<int> ratings = { 1, 2, 3 };
+
+    const int doc_id2 = 43;
+    const string content2 = "cat and dog in the home"s;
+    const vector<int> ratings2 = { 3, 3, 3 };
+
+    const int doc_id3 = 44;
+    const string content3 = "cat and dog in the black box"s;
+    const vector<int> ratings3 = { 4, 4, 4 };
+
+    {
+        SearchServer server;
+        server.AddDocument(doc_id, content, DocumentStatus::ACTUAL, ratings);
+        server.AddDocument(doc_id2, content2, DocumentStatus::ACTUAL, ratings);
+        server.AddDocument(doc_id3, content3, DocumentStatus::ACTUAL, ratings);
+        const auto found_docs = server.FindTopDocuments("cat dog -city"s, DocumentStatus::ACTUAL);
+        ASSERT(found_docs.size() == 2);
+        ASSERT(found_docs[0].id == 43);
+        ASSERT(found_docs[1].id == 44);
+    }
+}
+
+void TestSearchServer() {
+    RUN_TEST(TestExcludeStopWordsFromAddedDocumentContent);
+    RUN_TEST(TestExcludeMinusWordsFromAddedDocumentContent);
+
+    RUN_TEST(TestSortRating);
+    RUN_TEST(TestComputeAverageRating);
+    RUN_TEST(TestStatus);
+    RUN_TEST(TestCountingRelevansIsCorrect);
+}
+// --------- Окончание модульных тестов поисковой системы -----------
 
 int main() {
     SearchServer search_server;
