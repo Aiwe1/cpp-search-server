@@ -107,8 +107,12 @@ public:
 
     void AddDocument(int document_id, const string& document, DocumentStatus status,
         const vector<int>& ratings) {
-        if ((document_id < 0) || (documents_.count(document_id) > 0)) {
-            throw invalid_argument("не верный ID");
+        if (document_id < 0) {
+            throw invalid_argument("отрицательнйы ID");
+            return;
+        }
+        if (documents_.count(document_id) > 0) {
+            throw invalid_argument("уже существующий ID");
             return;
         }
         vector<string> words;
@@ -130,15 +134,12 @@ public:
     {
         vector<Document> result;
         //result.clear();
-        Query query;
-        if (!ParseQuery(raw_query, query)) {
-            throw invalid_argument("не допустимый запрос.");
-            return result; /////!!!!!!!!!!!
-        }
+        Query query = ParseQuery(raw_query);
+
         auto matched_documents = FindAllDocuments(query, document_predicate);
 
         sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) {
-            if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+            if (abs(lhs.relevance - rhs.relevance) < DELTA) {
                 return lhs.rating > rhs.rating;
             }
             else {
@@ -183,10 +184,8 @@ public:
         // Empty result by initializing it with default constructed tuple
         result = {};
         Query query;
-        if (!ParseQuery(raw_query, query)) {
-            throw invalid_argument("не допустимый запрос.");
-            return result; ///!!!!!!!!!!!
-        }
+      
+        query = ParseQuery(raw_query);
         vector<string> matched_words;
         for (const string& word : query.plus_words) {
             if (word_to_document_freqs_.count(word) == 0) {
@@ -250,11 +249,8 @@ private:
         if (ratings.empty()) {
             return 0;
         }
-        int rating_sum = 0;
-        for (const int rating : ratings) {
-            rating_sum += rating;
-        }
-        return rating_sum / static_cast<int>(ratings.size());
+        
+        return accumulate(ratings.begin(), ratings.end(), 0) / static_cast<int>(ratings.size());
     }
 
     struct QueryWord {
@@ -263,12 +259,14 @@ private:
         bool is_stop;
     };
 
-    [[nodiscard]] bool ParseQueryWord(string text, QueryWord& result) const {
+    QueryWord ParseQueryWord(string text) const {
         // Empty result by initializing it with default constructed QueryWord
+        QueryWord result;
         result = {};
 
         if (text.empty()) {
-            return false;
+            throw invalid_argument("пустой запрос");
+            return result;
         }
         bool is_minus = false;
         if (text[0] == '-') {
@@ -276,11 +274,12 @@ private:
             text = text.substr(1);
         }
         if (text.empty() || text[0] == '-' || !IsValidWord(text)) {
-            return false;
+            throw invalid_argument("неверные символы в запросе");
+            return result;
         }
 
         result = QueryWord{ text, is_minus, IsStopWord(text) };
-        return true;
+        return result;
     }
 
     struct Query {
@@ -288,14 +287,15 @@ private:
         set<string> minus_words;
     };
 
-    [[nodiscard]] bool ParseQuery(const string& text, Query& result) const {
+    Query ParseQuery(const string& text) const {
         // Empty result by initializing it with default constructed Query
+        Query result;
         result = {};
         for (const string& word : SplitIntoWords(text)) {
             QueryWord query_word;
-            if (!ParseQueryWord(word, query_word)) {
-                return false;
-            }
+            
+            query_word = ParseQueryWord(word);
+
             if (!query_word.is_stop) {
                 if (query_word.is_minus) {
                     result.minus_words.insert(query_word.data);
@@ -305,7 +305,7 @@ private:
                 }
             }
         }
-        return true;
+        return result;
     }
 
     // Existence required
