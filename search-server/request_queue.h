@@ -20,36 +20,7 @@ public:
     }
     // сделаем "обёртки" для всех методов поиска, чтобы сохранять результаты для нашей статистики
     template <typename DocumentPredicate>
-    std::vector<Document> AddFindRequest(const std::string& raw_query, DocumentPredicate document_predicate) {
-        auto result = ss.FindTopDocuments(raw_query, document_predicate);
-
-        QueryResult q;
-        q.is_empty = true;
-        if (!result.empty())
-            q.is_empty = false;
-
-        requests_.push_back(q);
-
-        ++all;
-        if (all > min_in_day_)
-        {
-            if (!requests_.front().is_empty && q.is_empty)
-            {
-                ++empty_;
-            }
-            else if (requests_.front().is_empty && !q.is_empty)
-            {
-                --empty_;
-            }
-            requests_.pop_front();
-        }
-        else {
-            if (q.is_empty)
-                ++empty_;
-        }
-
-        return result;
-    }
+    std::vector<Document> AddFindRequest(const std::string& raw_query, DocumentPredicate document_predicate);
 
     std::vector<Document> AddFindRequest(const std::string& raw_query, DocumentStatus status);
 
@@ -63,8 +34,18 @@ private:
     };
     std::deque<QueryResult> requests_;
     const static int min_in_day_ = 1440;
-    int all = 0;
-    int empty_ = 0;
+    int all_requests_ = 0;
+    int empty_requests_ = 0;
     const SearchServer& ss;
     // возможно, здесь вам понадобится что-то ещё
+    void CountRequests(bool empty_find);
 };
+
+template <typename DocumentPredicate>
+std::vector<Document> RequestQueue::AddFindRequest(const std::string& raw_query, DocumentPredicate document_predicate) {
+    auto result = ss.FindTopDocuments(raw_query, document_predicate);
+
+    CountRequests(!result.empty());
+
+    return result;
+}
