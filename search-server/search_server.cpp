@@ -1,18 +1,106 @@
 #include "search_server.h"
 
+using namespace std::string_literals;
 
 void SearchServer::AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings) {
     if ((document_id < 0) || (documents_.count(document_id) > 0)) {
-        throw std::invalid_argument("Invalid document_id");
-    }
+        throw std::invalid_argument("Invalid document_id"s);
+    } 
     const auto words = SplitIntoWordsNoStop(document);
 
     const double inv_word_count = 1.0 / words.size();
-    for (const std::string& word : words) {
-        word_to_document_freqs_[word][document_id] += inv_word_count;
-    }
+
     documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
-    document_ids_.push_back(document_id);
+    document_ids_.insert(document_id);
+
+    std::set<std::string> s;
+    for (const auto& w : words)
+        s.emplace(w); 
+    /*
+    if (!document_to_word_freqs_.count(s))
+    {
+        std::set<int> n;
+        n.insert(document_id);
+        document_to_word_freqs_.emplace(s, n);
+    }
+    else {
+        document_to_word_freqs_.at(s).insert(document_id);
+    } */
+    
+    for (auto& [id, w] : document_to_word_freqs_) {
+        if (w == s) {
+            bool flag = 1;
+            //for (auto i : duplicates_id) {
+            int ii = 0;
+            for (int i = 0; i < duplicates_id.size(); ++i) {
+                if (duplicates_id[i].count(id) > 0) {
+                    ii = i;
+                    
+                    flag = 0;
+                    break;
+                }
+            }
+            if (flag){
+                duplicates_id.push_back({ document_id, id });
+            }
+            else {
+                duplicates_id[ii].insert(document_id);
+            }
+
+            break;
+        }
+    } 
+    document_to_word_freqs_.emplace(document_id, s);
+
+    for (const std::string& word : words) {   
+        word_to_document_freqs_[word][document_id] += inv_word_count;
+        //document_to_word_freqs_[document_id].insert(word);
+    }
+}
+
+void SearchServer::RemoveDocument(int document_id) {
+    
+    if ((document_id < 0) || (documents_.count(document_id) == 0)) {
+        throw std::invalid_argument("Invalid document_id"s);
+    }
+    //auto f = duplicates_id.begin();
+    //for (auto i : duplicates_id) {
+    for (auto i = duplicates_id.begin(); i != duplicates_id.end(); ++i) {
+        int n = (*i).count(document_id);
+        if (n > 0 && n <= 2) {
+            duplicates_id.erase(i);
+            break;
+        }     
+        if (n > 2) {
+            (*i).erase(document_id);
+            break;
+        }
+    }
+    document_to_word_freqs_.erase(document_id);
+
+    std::vector<std::string> v;
+    for (auto& [j, ii] : word_to_document_freqs_) {
+        ii.erase(document_id);
+        if (word_to_document_freqs_.at(j).empty())
+            v.push_back(j);
+    }
+    for (const auto& s : v)
+        word_to_document_freqs_.erase(s);
+
+    documents_.erase(document_id);
+    document_ids_.erase(document_id); 
+}
+
+std::set<int> SearchServer::GetDuplicates() const {
+    std::set<int> res;
+    
+    for (auto dups : duplicates_id) {
+        for (auto i = ++dups.begin(); i != dups.end(); ++i) {
+            res.emplace(*i);
+        }
+    } 
+    
+    return res; 
 }
 
 std::vector<Document> SearchServer::FindTopDocuments(const std::string& raw_query, DocumentStatus status) const {
@@ -28,10 +116,10 @@ std::vector<Document> SearchServer::FindTopDocuments(const std::string& raw_quer
 int SearchServer::GetDocumentCount() const {
     return (int)documents_.size();
 }
-
+/*
 int SearchServer::GetDocumentId(int index) const {
     return document_ids_.at(index);
-}
+} */
 
 std::tuple<std::vector<std::string>, DocumentStatus> SearchServer::MatchDocument(const std::string& raw_query, int document_id) const {
     const auto query = ParseQuery(raw_query);
@@ -72,7 +160,7 @@ std::vector<std::string> SearchServer::SplitIntoWordsNoStop(const std::string& t
     std::vector<std::string> words;
     for (const std::string& word : SplitIntoWords(text)) {
         if (!IsValidWord(word)) {
-            throw std::invalid_argument("Word " + word + " is invalid");
+            throw std::invalid_argument("Word "s + word + " is invalid"s);
         }
         if (!IsStopWord(word)) {
             words.push_back(word);
@@ -91,7 +179,7 @@ int SearchServer::ComputeAverageRating(const std::vector<int>& ratings) {
 
 SearchServer::QueryWord SearchServer::ParseQueryWord(const std::string& text) const {
     if (text.empty()) {
-        throw std::invalid_argument("Query word is empty");
+        throw std::invalid_argument("Query word is empty"s);
     }
     std::string word = text;
     bool is_minus = false;
@@ -100,7 +188,7 @@ SearchServer::QueryWord SearchServer::ParseQueryWord(const std::string& text) co
         word = word.substr(1);
     }
     if (word.empty() || word[0] == '-' || !IsValidWord(word)) {
-        throw std::invalid_argument("Query word " + text + " is invalid");
+        throw std::invalid_argument("Query word "s + text + " is invalid"s);
     }
 
     return { word, is_minus, IsStopWord(word) };
@@ -125,4 +213,28 @@ SearchServer::Query SearchServer::ParseQuery(const std::string& text) const {
 // Existence required
 double SearchServer::ComputeWordInverseDocumentFreq(const std::string& word) const {
     return log(GetDocumentCount() * 1.0 / word_to_document_freqs_.at(word).size());
+}
+
+std::set<int>::const_iterator SearchServer::begin() const{
+    return document_ids_.begin();
+}
+std::set<int>::const_iterator SearchServer::end() const{
+    return document_ids_.end();
+} 
+
+const std::map<std::string, double>& SearchServer::GetWordFrequencies(int document_id) const {
+    //std::map<std::string, std::map<int, double>> word_to_document_freqs_;
+    static std::map<std::string, double> result;
+    result.clear();
+
+    for (const auto& [word, id_freq] : word_to_document_freqs_) {
+        for (const auto& [id, freq] : id_freq) {
+            if (id == document_id) {
+                //std::pair<std::string, double> r = { word, freq };
+                result.insert({ word, freq });
+            }
+        }
+    }
+
+    return result;
 }

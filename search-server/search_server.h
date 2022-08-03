@@ -15,6 +15,7 @@
 #include "document.h"
 #include "string_processing.h"
 
+using namespace std::string_literals;
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
 
 enum class DocumentStatus {
@@ -31,7 +32,7 @@ public:
         : stop_words_(MakeUniqueNonEmptyStrings(stop_words))  // Extract non-empty stop words
     {
         if (!all_of(stop_words_.begin(), stop_words_.end(), IsValidWord)) {
-            throw std::invalid_argument(std::string("Some of stop words are invalid"));
+            throw std::invalid_argument(std::string("Some of stop words are invalid"s));
         }
     }
 
@@ -42,6 +43,7 @@ public:
     }
 
     void AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings);
+    void RemoveDocument(int document_id);
 
     template <typename DocumentPredicate>
     std::vector<Document> FindTopDocuments(const std::string& raw_query, DocumentPredicate document_predicate) const;
@@ -50,9 +52,15 @@ public:
 
     int GetDocumentCount() const;
 
-    int GetDocumentId(int index) const;
+    //int GetDocumentId(int index) const;
+
+    std::set<int>::const_iterator begin() const;
+    std::set<int>::const_iterator end() const;
 
     std::tuple<std::vector<std::string>, DocumentStatus> MatchDocument(const std::string& raw_query, int document_id) const;
+
+    const std::map<std::string, double>& GetWordFrequencies(int document_id) const;
+    std::set<int> GetDuplicates() const;
 
 private:
     struct DocumentData {
@@ -61,8 +69,11 @@ private:
     };
     const std::set<std::string> stop_words_;
     std::map<std::string, std::map<int, double>> word_to_document_freqs_;
+    std::map<int, std::set<std::string>> document_to_word_freqs_;
     std::map<int, DocumentData> documents_;
-    std::vector<int> document_ids_;
+    std::set<int> document_ids_;
+    
+    std::vector<std::set<int>> duplicates_id;
 
     bool IsStopWord(const std::string& word) const;
 
@@ -101,7 +112,7 @@ std::vector<Document> SearchServer::FindTopDocuments(const std::string& raw_quer
     auto matched_documents = FindAllDocuments(query, document_predicate);
 
     sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) {
-        if (abs(lhs.relevance - rhs.relevance) < 1e-6) {
+        if (std::abs(lhs.relevance - rhs.relevance) < 1e-6) {
             return lhs.rating > rhs.rating;
         }
         else {
@@ -111,7 +122,7 @@ std::vector<Document> SearchServer::FindTopDocuments(const std::string& raw_quer
     if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
         matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
     }
-
+    
     return matched_documents;
 }
 
