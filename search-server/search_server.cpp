@@ -5,52 +5,32 @@ using namespace std::string_literals;
 void SearchServer::AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings) {
     if ((document_id < 0) || (documents_.count(document_id) > 0)) {
         throw std::invalid_argument("Invalid document_id"s);
-    } 
+    }
     const auto words = SplitIntoWordsNoStop(document);
 
-    const double inv_word_count = 1.0 / words.size();
+    size_t size = words.size();
+    if (size == 0)
+        return;
+
+    const double inv_word_count = 1.0 / size;
 
     documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
     document_ids_.insert(document_id);
 
     std::set<std::string> s;
     for (const auto& w : words)
-        s.emplace(w); 
-    /*
-    if (!document_to_word_freqs_.count(s))
+        s.emplace(w);
+
+    if (!words_to_id_.count(s))
     {
         std::set<int> n;
         n.insert(document_id);
-        document_to_word_freqs_.emplace(s, n);
+        words_to_id_[s].insert({ document_id });
     }
     else {
-        document_to_word_freqs_.at(s).insert(document_id);
-    } */
-    
-    for (auto& [id, w] : document_to_word_freqs_) {
-        if (w == s) {
-            bool flag = 1;
-            //for (auto i : duplicates_id) {
-            int ii = 0;
-            for (int i = 0; i < duplicates_id.size(); ++i) {
-                if (duplicates_id[i].count(id) > 0) {
-                    ii = i;
-                    
-                    flag = 0;
-                    break;
-                }
-            }
-            if (flag){
-                duplicates_id.push_back({ document_id, id });
-            }
-            else {
-                duplicates_id[ii].insert(document_id);
-            }
-
-            break;
-        }
-    } 
-    document_to_word_freqs_.emplace(document_id, s);
+        words_to_id_.at(s).insert(document_id);
+    }    
+    // я пробовал сделать так до этого, но почему то компил€тор в тренажере ругалс€ на любые действи€ по типу words_to_id_.count(<set>)
 
     for (const std::string& word : words) {   
         word_to_document_freqs_[word][document_id] += inv_word_count;
@@ -58,25 +38,78 @@ void SearchServer::AddDocument(int document_id, const std::string& document, Doc
     }
 }
 
+/*void SearchServer::AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings) {
+    if ((document_id < 0) || (documents_.count(document_id) > 0)) {
+        throw std::invalid_argument("Invalid document_id"s);
+    } 
+    const auto words = SplitIntoWordsNoStop(document);
+
+    size_t size = words.size();
+    if (size == 0)
+        return;
+
+    const double inv_word_count = 1.0 / size;
+
+    documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
+    document_ids_.insert(document_id);
+
+    std::set<std::string> s;
+    for (const auto& w : words)
+        s.emplace(w); 
+    
+    // я пробовал сделать map<set<string>, set<int>> duplicate words_id Ќо почему то компил€тор в тренажЄре не может искать по сету слов, в отличии от моего
+for (auto& [id, w] : document_to_word_freqs_) {
+    if (w == s) {
+        bool flag = true;
+        //for (auto i : duplicates_id) {
+        int duplicate = 0;
+        for (int i = 0; i < duplicates_id.size(); ++i) {
+            if (duplicates_id[i].count(id) > 0) {
+                duplicate = i;
+
+                flag = false;
+                break;
+            }
+        }
+        if (flag) {
+            duplicates_id.push_back({ document_id, id });
+        }
+        else {
+            duplicates_id[duplicate].insert(document_id);
+        }
+
+        break;
+    }
+}
+document_to_word_freqs_.emplace(document_id, s);
+
+for (const std::string& word : words) {
+    word_to_document_freqs_[word][document_id] += inv_word_count;
+    //document_to_word_freqs_[document_id].insert(word);
+}
+}*/
+
 void SearchServer::RemoveDocument(int document_id) {
     
     if ((document_id < 0) || (documents_.count(document_id) == 0)) {
         throw std::invalid_argument("Invalid document_id"s);
     }
-    //auto f = duplicates_id.begin();
-    //for (auto i : duplicates_id) {
-    for (auto i = duplicates_id.begin(); i != duplicates_id.end(); ++i) {
-        int n = (*i).count(document_id);
-        if (n > 0 && n <= 2) {
-            duplicates_id.erase(i);
-            break;
-        }     
-        if (n > 2) {
-            (*i).erase(document_id);
-            break;
+
+    for (auto [w, ids] : words_to_id_) {
+        if (ids.count(document_id) > 0)
+        {
+            if (ids.size() == 1)
+            {
+                words_to_id_.erase(w);
+                break;
+            }
+            if (ids.size() > 1)
+            {
+                ids.erase(document_id);
+                break;
+            }
         }
     }
-    document_to_word_freqs_.erase(document_id);
 
     std::vector<std::string> v;
     for (auto& [j, ii] : word_to_document_freqs_) {
@@ -94,9 +127,11 @@ void SearchServer::RemoveDocument(int document_id) {
 std::set<int> SearchServer::GetDuplicates() const {
     std::set<int> res;
     
-    for (auto dups : duplicates_id) {
-        for (auto i = ++dups.begin(); i != dups.end(); ++i) {
-            res.emplace(*i);
+    for (const auto& [w, id] : words_to_id_) {
+        if (id.size() > 1){
+            for (auto i = ++id.begin(); i != id.end(); ++i) {
+                res.insert(*i);
+            }
         }
     } 
     

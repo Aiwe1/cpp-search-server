@@ -28,13 +28,7 @@ enum class DocumentStatus {
 class SearchServer {
 public:
     template <typename StringContainer>
-    explicit SearchServer(const StringContainer& stop_words)
-        : stop_words_(MakeUniqueNonEmptyStrings(stop_words))  // Extract non-empty stop words
-    {
-        if (!all_of(stop_words_.begin(), stop_words_.end(), IsValidWord)) {
-            throw std::invalid_argument(std::string("Some of stop words are invalid"s));
-        }
-    }
+    explicit SearchServer(const StringContainer& stop_words);
 
     explicit SearchServer(const std::string& stop_words_text)
         : SearchServer(SplitIntoWords(stop_words_text))  // Invoke delegating constructor
@@ -52,8 +46,6 @@ public:
 
     int GetDocumentCount() const;
 
-    //int GetDocumentId(int index) const;
-
     std::set<int>::const_iterator begin() const;
     std::set<int>::const_iterator end() const;
 
@@ -69,11 +61,12 @@ private:
     };
     const std::set<std::string> stop_words_;
     std::map<std::string, std::map<int, double>> word_to_document_freqs_;
-    std::map<int, std::set<std::string>> document_to_word_freqs_;
+    //std::map<int, std::set<std::string>> document_to_word_freqs_;
     std::map<int, DocumentData> documents_;
     std::set<int> document_ids_;
     
-    std::vector<std::set<int>> duplicates_id;
+    //std::vector<std::set<int>> duplicates_id;
+    std::map<std::set<std::string>, std::set<int>> words_to_id_;
 
     bool IsStopWord(const std::string& word) const;
 
@@ -85,8 +78,8 @@ private:
 
     struct QueryWord {
         std::string data;
-        bool is_minus;
-        bool is_stop;
+        bool is_minus = false;
+        bool is_stop = false;
     };
 
     QueryWord ParseQueryWord(const std::string& text) const;
@@ -104,6 +97,15 @@ private:
     template <typename DocumentPredicate>
     std::vector<Document> FindAllDocuments(const Query& query, DocumentPredicate document_predicate) const;
 };
+
+template <typename StringContainer>
+SearchServer::SearchServer(const StringContainer& stop_words)
+    : stop_words_(MakeUniqueNonEmptyStrings(stop_words))  // Extract non-empty stop words
+{
+    if (!all_of(stop_words_.begin(), stop_words_.end(), IsValidWord)) {
+        throw std::invalid_argument(std::string("Some of stop words are invalid"s));
+    }
+}
 
 template <typename DocumentPredicate>
 std::vector<Document> SearchServer::FindTopDocuments(const std::string& raw_query, DocumentPredicate document_predicate) const {
