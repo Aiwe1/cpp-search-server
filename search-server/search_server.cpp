@@ -21,73 +21,17 @@ void SearchServer::AddDocument(int document_id, const std::string& document, Doc
     for (const auto& w : words)
         s.emplace(w);
 
-    if (!words_to_id_.count(s))
-    {
-        std::set<int> n;
-        n.insert(document_id);
+    if (!words_to_id_.count(s)){
         words_to_id_[s].insert({ document_id });
     }
     else {
         words_to_id_.at(s).insert(document_id);
     }    
-    // я пробовал сделать так до этого, но почему то компил€тор в тренажере ругалс€ на любые действи€ по типу words_to_id_.count(<set>)
 
     for (const std::string& word : words) {   
         word_to_document_freqs_[word][document_id] += inv_word_count;
-        //document_to_word_freqs_[document_id].insert(word);
     }
 }
-
-/*void SearchServer::AddDocument(int document_id, const std::string& document, DocumentStatus status, const std::vector<int>& ratings) {
-    if ((document_id < 0) || (documents_.count(document_id) > 0)) {
-        throw std::invalid_argument("Invalid document_id"s);
-    } 
-    const auto words = SplitIntoWordsNoStop(document);
-
-    size_t size = words.size();
-    if (size == 0)
-        return;
-
-    const double inv_word_count = 1.0 / size;
-
-    documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
-    document_ids_.insert(document_id);
-
-    std::set<std::string> s;
-    for (const auto& w : words)
-        s.emplace(w); 
-    
-    // я пробовал сделать map<set<string>, set<int>> duplicate words_id Ќо почему то компил€тор в тренажЄре не может искать по сету слов, в отличии от моего
-for (auto& [id, w] : document_to_word_freqs_) {
-    if (w == s) {
-        bool flag = true;
-        //for (auto i : duplicates_id) {
-        int duplicate = 0;
-        for (int i = 0; i < duplicates_id.size(); ++i) {
-            if (duplicates_id[i].count(id) > 0) {
-                duplicate = i;
-
-                flag = false;
-                break;
-            }
-        }
-        if (flag) {
-            duplicates_id.push_back({ document_id, id });
-        }
-        else {
-            duplicates_id[duplicate].insert(document_id);
-        }
-
-        break;
-    }
-}
-document_to_word_freqs_.emplace(document_id, s);
-
-for (const std::string& word : words) {
-    word_to_document_freqs_[word][document_id] += inv_word_count;
-    //document_to_word_freqs_[document_id].insert(word);
-}
-}*/
 
 void SearchServer::RemoveDocument(int document_id) {
     
