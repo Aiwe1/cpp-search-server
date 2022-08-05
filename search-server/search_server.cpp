@@ -8,11 +8,11 @@ void SearchServer::AddDocument(int document_id, const std::string& document, Doc
     }
     const auto words = SplitIntoWordsNoStop(document);
 
-    size_t size = words.size();
-    if (size == 0)
-        return;
+    const size_t size = words.size();       
 
-    const double inv_word_count = 1.0 / size;
+    double inv_word_count = 0.0;
+    if (size != 0)
+        inv_word_count = 1.0 / size;
 
     documents_.emplace(document_id, DocumentData{ ComputeAverageRating(ratings), status });
     document_ids_.insert(document_id);
@@ -21,7 +21,7 @@ void SearchServer::AddDocument(int document_id, const std::string& document, Doc
     for (const auto& w : words)
         s.emplace(w);
 
-    if (!words_to_id_.count(s)){
+    if (words_to_id_.count(s) == 0){
         words_to_id_[s].insert({ document_id });
     }
     else {
@@ -39,7 +39,7 @@ void SearchServer::RemoveDocument(int document_id) {
         throw std::invalid_argument("Invalid document_id"s);
     }
 
-    for (auto [w, ids] : words_to_id_) {
+    for (auto& [w, ids] : words_to_id_) {
         if (ids.count(document_id) > 0)
         {
             if (ids.size() == 1)
