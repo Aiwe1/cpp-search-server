@@ -23,6 +23,7 @@
 
 using namespace std::string_literals;
 const int MAX_RESULT_DOCUMENT_COUNT = 5;
+const double DELTA = 1e-6;
 
 enum class DocumentStatus {
     ACTUAL,
@@ -137,7 +138,8 @@ SearchServer::SearchServer(const StringContainer& stop_words)
     }
 } 
 template <typename DocumentPredicate>
-std::vector<Document> SearchServer::FindTopDocuments(const std::string_view raw_query, DocumentPredicate document_predicate) const {
+std::vector<Document> SearchServer::FindTopDocuments(const std::string_view raw_query,
+    DocumentPredicate document_predicate) const {
     const auto query = ParseQuery(raw_query, false);
 
     auto matched_documents = FindAllDocuments(query, document_predicate);
@@ -160,23 +162,8 @@ std::vector<Document> SearchServer::FindTopDocuments(const std::string_view raw_
 template <typename DocumentPredicate>
 std::vector<Document> SearchServer::FindTopDocuments(const std::execution::sequenced_policy& policy, 
     const std::string_view raw_query, DocumentPredicate document_predicate) const {
-    const auto query = ParseQuery(raw_query, false);
 
-    auto matched_documents = FindAllDocuments(query, document_predicate);
-
-    sort(matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) {
-        if (std::abs(lhs.relevance - rhs.relevance) < 1e-6) {
-            return lhs.rating > rhs.rating;
-        }
-        else {
-            return lhs.relevance > rhs.relevance;
-        }
-        });
-    if (matched_documents.size() > MAX_RESULT_DOCUMENT_COUNT) {
-        matched_documents.resize(MAX_RESULT_DOCUMENT_COUNT);
-    }
-
-    return matched_documents;
+    return FindTopDocuments(raw_query, document_predicate);
 }
 template <typename DocumentPredicate>
 std::vector<Document> SearchServer::FindTopDocuments(const std::execution::parallel_policy& policy,
@@ -186,7 +173,7 @@ std::vector<Document> SearchServer::FindTopDocuments(const std::execution::paral
     auto matched_documents = FindAllDocuments(policy, query, document_predicate);
 
     sort(policy, matched_documents.begin(), matched_documents.end(), [](const Document& lhs, const Document& rhs) {
-        if (std::abs(lhs.relevance - rhs.relevance) < 1e-6) {
+        if (std::abs(lhs.relevance - rhs.relevance) < DELTA) {
             return lhs.rating > rhs.rating;
         }
         else {
@@ -235,7 +222,7 @@ template <typename DocumentPredicate>
 std::vector<Document> SearchServer::FindAllDocuments(const std::execution::parallel_policy& policy, 
     const Query& query, DocumentPredicate document_predicate) const {
 
-    ConcurrentMap<int, double> document_to_relevance_concurent(6);
+    ConcurrentMap<int, double> document_to_relevance_concurent(4);
     
     for_each(std::execution::par, query.plus_words.begin(), query.plus_words.end(), [this, &document_to_relevance_concurent, &document_predicate](const auto& word)
         {
