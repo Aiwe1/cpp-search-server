@@ -235,7 +235,7 @@ template <typename DocumentPredicate>
 std::vector<Document> SearchServer::FindAllDocuments(const std::execution::parallel_policy& policy, 
     const Query& query, DocumentPredicate document_predicate) const {
 
-    ConcurrentMap<int, double> document_to_relevance_concurent(4);
+    ConcurrentMap<int, double> document_to_relevance_concurent(6);
     
     for_each(std::execution::par, query.plus_words.begin(), query.plus_words.end(), [this, &document_to_relevance_concurent, &document_predicate](const auto& word)
         {
