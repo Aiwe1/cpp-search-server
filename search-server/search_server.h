@@ -140,6 +140,14 @@ SearchServer::SearchServer(const StringContainer& stop_words)
 template <typename DocumentPredicate>
 std::vector<Document> SearchServer::FindTopDocuments(const std::string_view raw_query,
     DocumentPredicate document_predicate) const {
+
+    return FindTopDocuments(std::execution::seq, raw_query, document_predicate);
+}
+
+template <typename DocumentPredicate>
+std::vector<Document> SearchServer::FindTopDocuments(const std::execution::sequenced_policy& policy, 
+    const std::string_view raw_query, DocumentPredicate document_predicate) const {
+
     const auto query = ParseQuery(raw_query, false);
 
     auto matched_documents = FindAllDocuments(query, document_predicate);
@@ -157,13 +165,6 @@ std::vector<Document> SearchServer::FindTopDocuments(const std::string_view raw_
     }
 
     return matched_documents;
-}
-
-template <typename DocumentPredicate>
-std::vector<Document> SearchServer::FindTopDocuments(const std::execution::sequenced_policy& policy, 
-    const std::string_view raw_query, DocumentPredicate document_predicate) const {
-
-    return FindTopDocuments(raw_query, document_predicate);
 }
 template <typename DocumentPredicate>
 std::vector<Document> SearchServer::FindTopDocuments(const std::execution::parallel_policy& policy,
